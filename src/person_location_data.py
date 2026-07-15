@@ -4,7 +4,7 @@ from pathlib import Path
 
 import polars as pl
 
-from storage_paths import RAW_DATA_DIR
+from storage_paths import PROJECT_ROOT, RAW_DATA_DIR
 
 PREDICATE = "LOCATED_IN"
 
@@ -24,8 +24,19 @@ def person_records(raw_data_dir: Path = RAW_DATA_DIR) -> pl.DataFrame:
 
 
 def location_records(raw_data_dir: Path = RAW_DATA_DIR) -> pl.DataFrame:
-    """Load Location node rows from raw CSV."""
-    return read_csv(raw_data_dir / "nodes" / "location.csv")
+    """Load Location node rows from raw CSV, reading each image in natively.
+
+    A multimodal knowledge graph stores its assets, not just pointers to them.
+    `image_path` stays as a human-readable reference, while `image` holds the
+    raw bytes of that file so the skyline photo lives in the same LanceDB row
+    as the graph facts and hypervectors, versioned and queried together.
+    """
+    locations = read_csv(raw_data_dir / "nodes" / "location.csv")
+    image_bytes = [
+        (PROJECT_ROOT / image_path).read_bytes()
+        for image_path in locations.get_column("image_path")
+    ]
+    return locations.with_columns(pl.Series("image", image_bytes, dtype=pl.Binary))
 
 
 def relationship_records(raw_data_dir: Path = RAW_DATA_DIR) -> pl.DataFrame:

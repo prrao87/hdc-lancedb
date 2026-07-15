@@ -38,6 +38,15 @@ def _is_vector(field_type: pa.DataType) -> bool:
     )
 
 
+def _is_blob(field_type: pa.DataType) -> bool:
+    """True for native binary asset columns (image bytes, ...).
+
+    Like embeddings, blobs are never projectable or filterable: returning raw
+    bytes would blow up the JSON node-link response.
+    """
+    return pa.types.is_binary(field_type) or pa.types.is_large_binary(field_type)
+
+
 def _node_label(label: str) -> dict | None:
     return next((n for n in GRAPH_SCHEMA["nodes"] if n["label"] == label), None)
 
@@ -50,21 +59,28 @@ def schema_payload(db_uri: Path = DEFAULT_DB_URI) -> dict:
     """Describe the graph from GRAPH_SCHEMA + each table's Arrow schema.
 
     Scalar columns are offered as projectable/filterable properties; vector columns
-    are reported separately (badged "embedding") and never become projectable fields.
-    No Cypher runs here.
+    are reported separately (badged "embedding") and native binary assets (image
+    bytes) as "assets". Neither embeddings nor assets ever become projectable
+    fields. No Cypher runs here.
     """
     nodes = []
     for node in GRAPH_SCHEMA["nodes"]:
         dataset = _dataset(node["label"], db_uri)
-        properties, embeddings = [], []
+        properties, embeddings, assets = [], [], []
         for field in dataset.schema:
-            (embeddings if _is_vector(field.type) else properties).append(field.name)
+            if _is_vector(field.type):
+                embeddings.append(field.name)
+            elif _is_blob(field.type):
+                assets.append(field.name)
+            else:
+                properties.append(field.name)
         nodes.append(
             {
                 "label": node["label"],
                 "id_field": node["id"],
                 "properties": properties,
                 "embeddings": embeddings,
+                "assets": assets,
                 "count": dataset.count_rows(),
             }
         )
@@ -135,7 +151,9 @@ def assemble(spec: QuerySpec, db_uri: Path = DEFAULT_DB_URI) -> dict:
         id_field[label] = node["id"]
         dataset = _dataset(label, db_uri)
         scalar_props[label] = {
-            f.name for f in dataset.schema if not _is_vector(f.type)
+            f.name
+            for f in dataset.schema
+            if not _is_vector(f.type) and not _is_blob(f.type)
         }
 
     # Projection: only id + chosen label + tooltip columns. Embeddings can never enter.

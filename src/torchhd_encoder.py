@@ -11,6 +11,10 @@ import torchhd
 DIMENSIONS = 10_000
 SEED = 13
 VECTOR_COLUMNS = {"hv", "vibe_hv"}
+# Raw multimodal assets (image bytes, …) live in the table but are not symbolic
+# tokens, so they are skipped when building property bags and the vocabulary.
+BLOB_COLUMNS = {"image"}
+NON_SYMBOLIC_COLUMNS = VECTOR_COLUMNS | BLOB_COLUMNS
 
 
 @dataclass(frozen=True)
@@ -56,7 +60,9 @@ class TorchHDEncoder:
     def encode_properties(self, properties: Mapping[str, str]) -> torchhd.MAPTensor:
         """Encode a record as a raw sum of bound key/value associations."""
         sorted_items = sorted(
-            (key, value) for key, value in properties.items() if key not in VECTOR_COLUMNS
+            (key, value)
+            for key, value in properties.items()
+            if key not in NON_SYMBOLIC_COLUMNS
         )
         return self.bundle(
             [self.association_hv(key, value) for key, value in sorted_items]
@@ -164,7 +170,7 @@ def build_vocabulary(
     tokens = {f"predicate:{predicate}"}
     for row in [*persons, *locations, *relationships]:
         for key, value in row.items():
-            if key in VECTOR_COLUMNS:
+            if key in NON_SYMBOLIC_COLUMNS:
                 continue
             tokens.add(f"key:{key}")
             tokens.add(f"value:{value}")
