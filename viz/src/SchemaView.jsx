@@ -82,6 +82,19 @@ export default function SchemaView({ schema, colorMap }) {
                 </ul>
               </div>
             )}
+            {detail.assets?.length > 0 && (
+              <div className="field-group">
+                <span className="field-head">Assets</span>
+                <ul className="fields">
+                  {detail.assets.map((a) => (
+                    <li key={a}>
+                      <code>{a}</code>
+                      <span className="tag asset">blob · lazy</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </aside>

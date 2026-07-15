@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import mimetypes
 from pathlib import Path
 
 import lance
 import pyarrow as pa
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -232,3 +233,36 @@ def post_query(spec: QuerySpec) -> dict:
         raise
     except ValueError as exc:  # Cypher parse/plan errors from the engine
         raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/image/{label}/{node_id}")
+def get_image(label: str, node_id: str, db_uri: Path = DEFAULT_DB_URI) -> Response:
+    """Fetch one node's image bytes on demand from its lazy blob column.
+
+    This is the *only* path that materializes an image: the blob encoding keeps
+    the bytes out of every schema/query response, so they cross the wire only
+    when a client explicitly asks for this node's asset.
+    """
+    node = _node_label(label)
+    if node is None:
+        raise HTTPException(404, f"Unknown node label: {label}")
+    dataset = _dataset(label, db_uri)
+    if not any(_is_blob(f.type) and f.name == "image" for f in dataset.schema):
+        raise HTTPException(404, f"{label} has no image asset")
+
+    id_field = node["id"]
+    columns = [id_field] + (["image_path"] if "image_path" in dataset.schema.names else [])
+    catalog = dataset.to_table(columns=columns)
+    ids = catalog.column(id_field).to_pylist()
+    if node_id not in ids:
+        raise HTTPException(404, f"No {label} with id '{node_id}'")
+    index = ids.index(node_id)
+
+    with dataset.take_blobs("image", indices=[index])[0] as blob:
+        payload = blob.readall()
+
+    media_type = "image/jpeg"
+    if "image_path" in catalog.schema.names:
+        guessed = mimetypes.guess_type(catalog.column("image_path")[index].as_py())[0]
+        media_type = guessed or media_type
+    return Response(content=payload, media_type=media_type)

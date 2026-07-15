@@ -101,7 +101,7 @@ Here is every column of every table:
 | `lon_bucket` | string | Coarse longitude bucket |
 | `description` | string | Free-text city description |
 | `image_path` | string | Human-readable pointer to the skyline photo |
-| `image` | **binary** | **Raw JPEG bytes of the skyline photo, stored natively in the row** |
+| `image` | **binary (blob)** | **Raw JPEG bytes of the skyline photo, stored natively as a lazy blob** |
 | `hv` | vector[10000] | Property-bag hypervector |
 | `vibe_hv` | vector[10000] | Bundle of fuzzy multimodal vibe features |
 
@@ -119,6 +119,12 @@ Here is every column of every table:
 `Location.image` holds the actual bytes of `img/seattle.jpg` and its siblings (JPEG, ~9 to 11 KB
 each), not a link to them. Graph facts, the image asset, and the hypervectors are columns of one
 LanceDB row: indexed and versioned together, with nothing to keep in sync across systems.
+
+The column is written with Lance's blob encoding (`lance-encoding:blob`), so the bytes are **lazy**:
+ordinary scans and Cypher queries return a small `{position, size}` descriptor, never the image
+itself. The bytes are read only when something explicitly asks for them via `take_blobs` (see the
+`/image/{label}/{id}` endpoint in [src/graph_api.py](src/graph_api.py)). A query that never wants a
+picture never pays to read one, which is what makes storing large assets inline practical.
 
 At query time (`hdc_retrieve.py`), a natural-language query is mapped to vibe features, a query path
 vector is built, and stored `vibe_hv` columns are ranked by cosine similarity. `lance-graph`
@@ -314,10 +320,12 @@ To grow the demo, add rows to the CSVs under [data/](data/), then rerun `graph_i
 A two-view React + FastAPI visualizer lives in [viz/](viz/):
 
 - **Schema view**: the meta-graph (labels, properties, relationships) derived from the graph config
-  and each table's Arrow schema. Embedding columns (`hv`, `vibe_hv`) are badged, never drawn.
+  and each table's Arrow schema. Embedding columns (`hv`, `vibe_hv`) and blob assets (`image`) are
+  badged, never drawn.
 - **Instance view**: a query *builder*. Pick a relationship, per-label display/tooltip columns, and
   structured filters. The backend constructs Cypher from your selections and returns a node-link
-  graph; the generated Cypher is shown read-only.
+  graph; the generated Cypher is shown read-only. Click a `Location` node and its skyline image is
+  fetched on demand from the lazy blob column (nothing else loads image bytes).
 
 The Cypher engine (`lance_graph.CypherEngine`) is Python-only, so the browser never touches it: a
 FastAPI backend serves JSON and the React frontend draws it.

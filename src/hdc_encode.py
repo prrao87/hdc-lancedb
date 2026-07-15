@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-import lancedb
+import lance
 import polars as pl
 import pyarrow as pa
 
@@ -15,7 +15,13 @@ from person_location_data import (
     validate_location_vibes,
 )
 from storage_paths import DEFAULT_DB_URI, DEFAULT_VOCAB_PATH, RAW_DATA_DIR
-from torchhd_encoder import DIMENSIONS, TorchHDEncoder, build_vocabulary, hv_to_list
+from torchhd_encoder import (
+    BLOB_COLUMNS,
+    DIMENSIONS,
+    TorchHDEncoder,
+    build_vocabulary,
+    hv_to_list,
+)
 
 
 @dataclass(frozen=True)
@@ -60,9 +66,20 @@ def prepare_vibes(vibes: pl.DataFrame) -> list[dict[str, str]]:
     return prepared
 
 
-def read_table(db, table_name: str) -> pl.DataFrame:
-    """Read one existing LanceDB table into Polars for HDC encoding."""
-    return pl.from_arrow(db.open_table(table_name).to_arrow())
+def dataset_path(db_uri: Path, table_name: str) -> str:
+    """Filesystem path of one Lance table inside the shared dataset."""
+    return str(db_uri / f"{table_name}.lance")
+
+
+def read_table(db_uri: Path, table_name: str) -> pl.DataFrame:
+    """Read one graph table into Polars, skipping lazy blob asset columns.
+
+    Image bytes are never needed to encode hypervectors, and projecting them
+    out means the encode step never materializes a blob.
+    """
+    ds = lance.dataset(dataset_path(db_uri, table_name))
+    columns = [name for name in ds.schema.names if name not in BLOB_COLUMNS]
+    return pl.from_arrow(ds.to_table(columns=columns))
 
 
 def encode_rows(
@@ -144,24 +161,46 @@ def encode_rows(
     )
 
 
-def ensure_vector_column(table, column_name: str) -> None:
-    """Add a fixed-size HDC vector column if graph ingestion has not done so."""
-    if column_name not in table.schema.names:
-        table.add_columns([pa.field(column_name, pa.list_(pa.float32(), DIMENSIONS))])
+def merge_hv_columns(db_uri: Path, encoded: EncodedRows) -> None:
+    """Join the new HDC vector columns onto existing graph rows by `id`.
 
-
-def merge_hv_columns(db, encoded: EncodedRows) -> None:
-    """Update existing LanceDB rows with their new HDC vector columns."""
+    Uses Lance's column merge rather than a row upsert: `merge_insert` cannot
+    round-trip a blob column (it reads existing values back as descriptors), so
+    we only ever bring in the `id` key plus the freshly computed vectors and let
+    Lance graft them on. Existing columns, including the lazy image blob, are
+    untouched. Any prior HDC columns are dropped first so re-encoding is
+    idempotent.
+    """
     for table_name, rows in [
         ("Person", encoded.persons),
         ("Location", encoded.locations),
         (PREDICATE, encoded.relationships),
     ]:
-        table = db.open_table(table_name)
-        ensure_vector_column(table, "hv")
-        if "vibe_hv" in rows.columns:
-            ensure_vector_column(table, "vibe_hv")
-        table.merge_insert("id").when_matched_update_all().execute(rows)
+        hv_columns = [column for column in ("hv", "vibe_hv") if column in rows.columns]
+        path = dataset_path(db_uri, table_name)
+        ds = lance.dataset(path)
+        stale = [column for column in hv_columns if column in ds.schema.names]
+        if stale:
+            ds.drop_columns(stale)
+            ds = lance.dataset(path)
+        ds.merge(hv_merge_table(rows, hv_columns), left_on="id", right_on="id")
+
+
+def hv_merge_table(rows: pl.DataFrame, hv_columns: list[str]) -> pa.Table:
+    """Build the `id` + hypervector Arrow table Lance grafts onto a graph table.
+
+    Polars would hand Lance `large_list<double>` columns, but LanceDB vector
+    search needs fixed-size `float32` lists, so the vector columns are cast to
+    `list_(float32, DIMENSIONS)` before the merge.
+    """
+    merge_columns = rows.select(["id", *hv_columns]).to_arrow()
+    fields = [
+        pa.field(field.name, pa.list_(pa.float32(), DIMENSIONS))
+        if field.name in hv_columns
+        else field
+        for field in merge_columns.schema
+    ]
+    return merge_columns.cast(pa.schema(fields))
 
 
 def encode_hdc(
@@ -175,10 +214,9 @@ def encode_hdc(
     tables, demonstrating LanceDB's ability to evolve the schema with new
     feature columns.
     """
-    db = lancedb.connect(db_uri)
-    persons = read_table(db, "Person")
-    locations = read_table(db, "Location")
-    relationships = read_table(db, PREDICATE)
+    persons = read_table(db_uri, "Person")
+    locations = read_table(db_uri, "Location")
+    relationships = read_table(db_uri, PREDICATE)
     vibes = location_vibe_records(raw_data_dir)
     validate_location_vibes(locations, vibes)
     prepared_vibes = prepare_vibes(vibes)
@@ -192,7 +230,7 @@ def encode_hdc(
     )
     encoder = TorchHDEncoder(tokens)
     encoded = encode_rows(persons, locations, relationships, prepared_vibes, encoder)
-    merge_hv_columns(db, encoded)
+    merge_hv_columns(db_uri, encoded)
 
     vocab_path.parent.mkdir(parents=True, exist_ok=True)
     vocab_path.write_text(json.dumps(tokens, indent=2) + "\n")
