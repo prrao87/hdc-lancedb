@@ -1,0 +1,4 @@
+id,name,kind,country,region,timezone,lat_bucket,lon_bucket,description,image_path
+location-seattle,Seattle,Location,US,pacific_northwest,pacific,north,west,pacific northwest city on puget sound with cascade and olympic mountain views,img/seattle.jpg
+location-new-york,New York,Location,US,northeast,eastern,north,east,northeast city with dense skyline and harbor riverfront,img/nyc.jpg
+location-salt-lake-city,Salt Lake City,Location,US,mountain_west,mountain,north,west,mountain west inland city near the wasatch range and great salt lake,img/salt-lake-city.jpg

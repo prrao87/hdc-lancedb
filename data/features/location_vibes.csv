@@ -1,0 +1,14 @@
+location_id,source,feature,weight,evidence,image_path
+location-seattle,image,mountains,0.95,skyline image shows mountain range,img/seattle.jpg
+location-seattle,image,waterfront,0.87,water visible in foreground,img/seattle.jpg
+location-seattle,derived,pacific_coast,0.92,city is on puget sound in the pacific northwest,img/seattle.jpg
+location-seattle,derived,scenic_urban,0.90,skyline plus mountains plus water,img/seattle.jpg
+location-seattle,derived,nature_access,0.86,urban core is near mountains and water,img/seattle.jpg
+location-new-york,image,dense_skyline,0.95,dense skyscraper skyline,img/nyc.jpg
+location-new-york,image,riverfront,0.82,river and harbor water visible near city,img/nyc.jpg
+location-new-york,derived,concrete_jungle,0.91,dense built environment and iconic towers,img/nyc.jpg
+location-new-york,derived,urban_energy,0.92,dense skyline and cultural signals,img/nyc.jpg
+location-salt-lake-city,image,mountains,0.93,wasatch range visible near city,img/salt-lake-city.jpg
+location-salt-lake-city,derived,nature_access,0.88,city is close to mountain trails and ski areas,img/salt-lake-city.jpg
+location-salt-lake-city,derived,mountain_west,0.86,inland mountain west setting,img/salt-lake-city.jpg
+location-salt-lake-city,derived,lake_nearby,0.74,great salt lake is nearby but the city is inland,img/salt-lake-city.jpg

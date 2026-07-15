@@ -1,0 +1,5 @@
+id,person_id,location_id,predicate
+person-1-located_in-location-seattle,person-1,location-seattle,LOCATED_IN
+person-2-located_in-location-seattle,person-2,location-seattle,LOCATED_IN
+person-3-located_in-location-new-york,person-3,location-new-york,LOCATED_IN
+person-4-located_in-location-salt-lake-city,person-4,location-salt-lake-city,LOCATED_IN
