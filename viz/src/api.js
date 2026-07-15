@@ -8,6 +8,12 @@ export async function getSchema() {
   return res.json();
 }
 
+// URL for one node's image asset. The bytes live in a lazy blob column and are
+// fetched only when this URL is actually requested (e.g. an <img> is rendered).
+export function imageUrl(label, rawId) {
+  return `${BASE}/image/${encodeURIComponent(label)}/${encodeURIComponent(rawId)}`;
+}
+
 export async function runQuery(spec) {
   const res = await fetch(`${BASE}/query`, {
     method: "POST",

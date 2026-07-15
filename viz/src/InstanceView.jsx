@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import GraphCanvas from "./GraphCanvas.jsx";
-import { runQuery } from "./api.js";
+import { imageUrl, runQuery } from "./api.js";
 
 const OPS = ["=", "<>", "<", "<=", ">", ">=", "CONTAINS", "STARTS WITH", "ENDS WITH"];
 
@@ -23,6 +23,11 @@ export default function InstanceView({ schema, colorMap }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState(null);
+
+  // A node's raw entity id, minus the "Label:" prefix used for graph node ids.
+  const rawId = (node) => node.id.slice(node.group.length + 1);
+  const hasImage = (label) => nodeByLabel[label]?.assets?.includes("image");
 
   // (Re)initialize render config whenever the chosen edge changes.
   useEffect(() => {
@@ -50,6 +55,7 @@ export default function InstanceView({ schema, colorMap }) {
     setLoading(true);
     setError(null);
     try {
+      setSelected(null);
       setResult(await runQuery(buildSpec()));
     } catch (e) {
       setError(e.message);
@@ -85,9 +91,38 @@ export default function InstanceView({ schema, colorMap }) {
 
   return (
     <div className="view-split">
-      <GraphCanvas data={result ?? { nodes: [], links: [] }} colorMap={colorMap} />
+      <GraphCanvas
+        data={result ?? { nodes: [], links: [] }}
+        colorMap={colorMap}
+        onNodeClick={setSelected}
+      />
       <aside className="side-panel builder">
         <h3>Query builder</h3>
+
+        {selected && (
+          <div className="builder-card node-preview">
+            <div className="card-head">
+              <span className="swatch" style={{ background: colorMap[selected.group] }} />
+              {selected.label ?? rawId(selected)}
+              <button type="button" className="mini" onClick={() => setSelected(null)}>
+                ×
+              </button>
+            </div>
+            {hasImage(selected.group) ? (
+              <figure className="asset">
+                <img
+                  src={imageUrl(selected.group, rawId(selected))}
+                  alt={`${selected.group} ${rawId(selected)}`}
+                />
+                <figcaption className="muted">
+                  Image bytes fetched on demand from the lazy blob column.
+                </figcaption>
+              </figure>
+            ) : (
+              <p className="muted">No image asset for {selected.group} nodes.</p>
+            )}
+          </div>
+        )}
 
         <label className="ctl">
           <span>Relationship</span>
