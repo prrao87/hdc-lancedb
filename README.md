@@ -26,13 +26,21 @@ continuous and fuzzy.
 
 **Hyperdimensional Computing (HDC)** represents every concept (a person, a city, a feature like
 "mountains") as a single very high-dimensional vector (here, 10,000 numbers). The trick is that in
-such a large space, two randomly chosen vectors are almost always nearly perpendicular, so each
-concept starts out effectively unique and unrelated to the others. You then build meaning with just
-two operations: **bundling** (add vectors together to form a set or "bag" of things, where the
-result stays *similar* to each ingredient) and **binding** (multiply vectors to tie a role to a
+such a large space, two randomly chosen vectors are almost always nearly orthogonal to one another, so each concept starts out effectively unique and unrelated to the others. You then build meaning with just
+three basic operations, the algebra of high-dimensional random vectors introduced by Pentti Kanerva
+([Kanerva, 2009](https://doi.org/10.1007/s12559-009-9009-8)):
+- **Bundling** (add vectors together to form a set or "bag" of things, where the
+result stays *similar* to each ingredient)
+- **Binding** (multiply vectors to tie a role to a
 value, where the result is *dissimilar* to its parts but can be cleanly undone later).
+- **Permuting** (shuffle a vector's coordinates in a fixed, reversible pattern, usually a cyclic
+shift, so the result is *dissimilar* to the original but can be undone; this is how order or position
+gets encoded, e.g. telling the first item in a sequence apart from the second)
 
-That's enough to encode a whole record as one vector and to ask fuzzy, compositional questions of it
+This demo uses only bundling and binding; permutation is included here for completeness, since it
+rounds out the standard HDC toolkit even though the person/location graph has no ordered sequences to encode.
+
+These three mathematical operations are enough to encode a whole record as one vector and to ask fuzzy, compositional questions of it
 by comparing vectors with a similarity score. Because the space is continuous, answers *degrade
 gracefully*: a city that matches most of a query scores high, one that matches only part of it
 scores lower, and something unrelated scores near zero: no exact keyword or column ever has to
