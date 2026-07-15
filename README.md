@@ -1,6 +1,6 @@
 # Multimodal Knowledge Graphs with HDC + lance-graph
 
-A small, self-contained demo that combines two ways of looking at the *same* data:
+A small, self-contained demo that combines two ways of looking at the same data: really high-dimensional vector space (10K dimensions) and property graphs. [LanceDB](https://lancedb.com) is used as the storage, providing two forms of retrieval over the data:
 
 - **Associative search** via **Hyperdimensional Computing (HDC)** — fuzzy, similarity-based
   retrieval that answers vague, compositional questions like *"persons from cities on the
@@ -8,12 +8,12 @@ A small, self-contained demo that combines two ways of looking at the *same* dat
 - **Property-graph traversal** via **[lance-graph](https://github.com/lancedb/lance-graph)** —
   exact, schema-valid Cypher over the same tables.
 
-Both views live in **one [LanceDB](https://lancedb.com) dataset**. Graph facts, high-dimensional
-relationship vectors, and pointers to multimodal assets (skyline images) are columns of the same
-rows — indexed and versioned together, with no cross-system sync problem.
+Both views live in **one [Lance](https://lance.org)** dataset. Lance is a multimodal lakehouse format that's well suited for HDC.
+Graph facts, high-dimensional vectors (hypervectors), and native storage of multimodal assets (images, video, sensor traces, and more) are all columns of the same table — indexed and versioned together, with no need to manage multiple systems to keep them in sync. LanceDB is the data management platform and lakehouse built on top of the Lance format.
 
-The core idea: let HDC propose **could-be-true** candidates from fuzzy intent, and let the graph
-confirm **known-true** facts. A knowledge graph and a hyperdimensional vector space are just two
+The core idea in this demo is this: we let HDC propose **could-be-true** candidates from fuzzy intent-style queries, and let the graph confirm **what is known to be true**, based on the facts it stores.
+
+A knowledge graph and a hyperdimensional vector space are just two
 representations of the same data in two different topological spaces — one discrete and exact, one
 continuous and fuzzy.
 
@@ -21,6 +21,23 @@ continuous and fuzzy.
 > This demo is deliberately tiny (4 people, 3 cities). The multimodal "vibe" features in
 > [data/features/location_vibes.csv](data/features/location_vibes.csv) are hand-authored
 > stand-ins shaped exactly like the captions a vision model (CLIP / a vision-LLM) would emit.
+
+## What is HDC?
+
+**Hyperdimensional Computing (HDC)** represents every concept — a person, a city, a feature like
+"mountains" — as a single very high-dimensional vector (here, 10,000 numbers). The trick is that in
+such a large space, two randomly chosen vectors are almost always nearly perpendicular, so each
+concept starts out effectively unique and unrelated to the others. You then build meaning with just
+two operations: **bundling** (add vectors together to form a set or "bag" of things, where the
+result stays *similar* to each ingredient) and **binding** (multiply vectors to tie a role to a
+value, where the result is *dissimilar* to its parts but can be cleanly undone later).
+
+That's enough to encode a whole record as one vector and to ask fuzzy, compositional questions of it
+by comparing vectors with a similarity score. Because the space is continuous, answers *degrade
+gracefully*: a city that matches most of a query scores high, one that matches only part of it
+scores lower, and something unrelated scores near zero — no exact keyword or column ever has to
+match. That soft, similarity-based matching is what complements the exact, schema-bound graph
+traversal in the rest of this demo.
 
 ## The data
 
@@ -53,10 +70,13 @@ The build runs in two stages, both writing to the same dataset:
 1. **`graph_ingest.py`** ingests the raw CSVs into a LanceDB dataset (`person-location/`) as three
    tables: `Person`, `Location`, `LOCATED_IN`.
 2. **`hdc_encode.py`** adds 10,000-dimensional hypervector columns to those same tables:
-   - `Person.hv`, `Location.hv` — entity property bags
-   - `Location.vibe_hv` — a bundle of fuzzy multimodal features per city
-   - `LOCATED_IN.hv` — the subject–predicate–object binding `hv(person) * hv(LOCATED_IN) * hv(location)`
-   - `LOCATED_IN.vibe_hv` — the multimodal path vector, searched at query time
+
+   | Column | What it encodes |
+   |--------|-----------------|
+   | `Person.hv`, `Location.hv` | Entity property bags |
+   | `Location.vibe_hv` | A bundle of fuzzy multimodal features per city |
+   | `LOCATED_IN.hv` | The subject–predicate–object binding `hv(person) * hv(LOCATED_IN) * hv(location)` |
+   | `LOCATED_IN.vibe_hv` | The multimodal path vector, searched at query time |
 
 At query time (`hdc_retrieve.py`), a natural-language query is mapped to vibe features, a query path
 vector is built, and stored `vibe_hv` columns are ranked by cosine similarity. `lance-graph`
@@ -67,31 +87,51 @@ vector is built, and stored `vibe_hv` columns are ranked by cosine similarity. `
 
 Defined in [src/torchhd_encoder.py](src/torchhd_encoder.py):
 
-- **Hypervector** — a 10,000-dim bipolar (MAP) vector, one per symbolic token, from a seeded
+- **Hypervector**: a 10,000-dim bipolar (MAP) vector, one per symbolic token, from a seeded
   deterministic random embedding. Random high-dim vectors are nearly orthogonal by default —
   everything rests on this.
-- **Binding** (`multibind`) — associates vectors; the result is *dissimilar* to its parts and is
+- **Binding** (`multibind`): associates vectors; the result is *dissimilar* to its parts and is
   reversible. Used to encode `subject * predicate * object`.
-- **Bundling** (`bundle` / `torchhd.multiset`) — superposition; the result stays *similar* to each
+- **Bundling** (`bundle` / `torchhd.multiset`): superposition; the result stays *similar* to each
   ingredient. Used to accumulate a node's property/feature bag.
 
-### Hypervector representation lifecycle
+## Hypervector representation lifecycle
 
-Node and relationship tables intentionally store different forms of MAP hypervectors:
+Every vector here is a **MAP** hypervector. MAP ("Multiply–Add–Permute") is the vector-symbolic
+model TorchHD uses by default: each atomic token is a 10,000-dim vector of `±1`, **bundling** is
+element-wise *addition*, and **binding** is element-wise *multiplication*. 
 
-- **Node rows store raw sums.** A Location such as Seattle is the full-precision sum of bound
-  role/value associations (`feature -> mountains`, `feature -> pacific_coast`, …). Keeping raw
-  coordinates preserves feature weights and supports *exact* additive insert/remove.
-- **Relationship rows store bipolar products.** Before a node sum enters an S-P-O binding,
-  `normalize_for_binding()` projects it to `{-1, +1}`. MAP multiplication is self-inverse, so a
-  known subject and predicate can recover the encoded object factor exactly.
-- **Zero ties are resolved deterministically.** Even-sized sums can contain zeros; a stable context
-  (e.g. `Location:seattle`) seeds a random bipolar tie vector, avoiding a global `0 -> -1` bias
-  while keeping rebuilds reproducible.
+Mathematically, both binding and bundling are **exactly invertible** operations, but in practice (when working with TorchHD), we have to understand when to store normalized vs. raw hypervectors so that the original hypervectors are recoverable after running numerical operations on them.
 
-This separation is deliberate — do **not** normalize inside `bundle()`, or you discard multiplicity
-and turn exact additive updates into approximate ones. Normalize only when a composite sum crosses
-into a binding.
+- **Binding is exactly invertible: but only when every factor is `±1`.** Because `(+1)² = (-1)² =
+  1`, each factor is its own inverse, so `a * b * c` multiplied by the known `a` and `b` recovers
+  `c` exactly. Feed in a factor with any other value and that guarantee is gone.
+- **Bundling is exactly invertible: but only if you keep the sum intact.** The bundle of A, B, C
+  is the literal element-wise sum, so its coordinates are small integers (…, `-2`, `0`, `3`, …)
+  that record *how many* ingredients — and *how strongly* — voted at each position. Add or subtract
+  a member and you land exactly on the smaller bundle. Collapse that sum back down to `±1` and the
+  counts are lost for good.
+
+The un-collapsed, integer-valued vector are **unnormalized**, and the sign-only `±1` version is its
+**normalized (bipolar)** form. As a user working with HDC using TorchHD, all you need to know is that binding wants normalized factors; bundling wants the unnormalized counts — so the two kinds of table deliberately store different forms.
+
+### Storage: what each LanceDB table holds
+
+We create multiple LanceDB tables as follows:
+
+- **Node rows (`Person.hv`, `Location.hv`, `Location.vibe_hv`) store unnormalized sums.** A Location such as
+  Seattle is the full-precision sum of its bound role/value associations (`feature -> mountains`,
+  `feature -> pacific_coast`, …). Keeping the integer coordinates preserves feature weights and
+  supports *exact* additive insert/remove — which is why `bundle()` must **never** normalize
+  internally.
+- **Relationship rows (`LOCATED_IN.hv`, `LOCATED_IN.vibe_hv`) store bipolar products.** Before a
+  node sum enters an S-P-O binding, `normalize_for_binding()` collapses it to `{-1, +1}` so the
+  multiply stays self-inverse and a known subject + predicate recover the encoded object exactly.
+- **Zero coordinates are broken deterministically.** An even-sized unnormalized sum can land on exactly `0`,
+  which has no sign to keep; a stable context (e.g. `Location:seattle`) seeds a random `±1` tie
+  vector, avoiding a global `0 -> -1` bias while keeping rebuilds reproducible.
+
+Normalize *only* at that node → binding boundary; everywhere else the unnormalized vector is the source of truth.
 
 ## Setup
 
