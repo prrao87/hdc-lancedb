@@ -19,7 +19,7 @@ GRAPH_SCHEMA = {
     ],
     "relationships": [
         {
-            "type": "LOCATED_IN",
+            "type": "VISITED",
             "from_label": "Person",
             "from_key": "person_id",
             "to_label": "Location",
@@ -54,7 +54,7 @@ def city_query(city: str) -> str:
     """Build the default exact graph query for a city."""
     escaped_city = city.replace("\\", "\\\\").replace("'", "\\'")
     return (
-        "MATCH (p:Person)-[:LOCATED_IN]->(l:Location) "
+        "MATCH (p:Person)-[:VISITED]->(l:Location) "
         f"WHERE l.name = '{escaped_city}' "
         "RETURN p.name AS person, l.name AS city "
         "ORDER BY p.name"
@@ -65,17 +65,17 @@ def timezone_query(timezone: str) -> str:
     """Build the graph validation query for a location timezone property."""
     escaped_timezone = timezone.replace("\\", "\\\\").replace("'", "\\'")
     return (
-        "MATCH (p:Person)-[:LOCATED_IN]->(l:Location) "
+        "MATCH (p:Person)-[:VISITED]->(l:Location) "
         f"WHERE l.timezone = '{escaped_timezone}' "
         "RETURN p.name AS person, l.name AS city, l.timezone AS timezone "
         "ORDER BY p.name"
     )
 
 
-def located_in_query() -> str:
+def visited_query() -> str:
     """Build the exact graph query for all person-location paths."""
     return (
-        "MATCH (p:Person)-[:LOCATED_IN]->(l:Location) "
+        "MATCH (p:Person)-[:VISITED]->(l:Location) "
         "RETURN p.name AS person, l.name AS city, l.timezone AS timezone "
         "ORDER BY p.name"
     )

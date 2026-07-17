@@ -6,7 +6,7 @@ import polars as pl
 
 from storage_paths import PROJECT_ROOT, RAW_DATA_DIR
 
-PREDICATE = "LOCATED_IN"
+PREDICATE = "VISITED"
 
 
 def read_csv(path: Path) -> pl.DataFrame:
@@ -40,8 +40,8 @@ def location_records(raw_data_dir: Path = RAW_DATA_DIR) -> pl.DataFrame:
 
 
 def relationship_records(raw_data_dir: Path = RAW_DATA_DIR) -> pl.DataFrame:
-    """Load LOCATED_IN relationship rows from raw CSV."""
-    return read_csv(raw_data_dir / "relationships" / "located_in.csv")
+    """Load VISITED relationship rows from raw CSV."""
+    return read_csv(raw_data_dir / "relationships" / "visited.csv")
 
 
 def location_vibe_records(raw_data_dir: Path = RAW_DATA_DIR) -> pl.DataFrame:
