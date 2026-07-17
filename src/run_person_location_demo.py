@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from graph_ingest import ingest_graph
-from graph_retrieve import execute_query, located_in_query
+from graph_retrieve import execute_query, visited_query
 from hdc_encode import encode_hdc
 from hdc_retrieve import hdc_fuzzy_paths
 from storage_paths import DEFAULT_DB_URI, DEFAULT_VOCAB_PATH
@@ -21,7 +21,7 @@ def run_fuzzy_demo(db_uri: Path, vocab_path: Path, query: str) -> None:
     build_demo(db_uri, vocab_path)
 
     hdc_paths = hdc_fuzzy_paths(query, db_uri, vocab_path)
-    graph_rows = execute_query(located_in_query(), db_uri).to_pylist()
+    graph_rows = execute_query(visited_query(), db_uri).to_pylist()
 
     print(f"Shared LanceDB dataset: {db_uri}")
     print(f"Question: {query}")
@@ -41,15 +41,15 @@ def run_fuzzy_demo(db_uri: Path, vocab_path: Path, query: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build and query a Person-LOCATED_IN-Location LanceDB demo."
+        description="Build and query a Person-VISITED-Location LanceDB demo."
     )
     parser.add_argument("--db-uri", type=Path, default=DEFAULT_DB_URI)
     parser.add_argument("--vocab-path", type=Path, default=DEFAULT_VOCAB_PATH)
     parser.add_argument(
         "--query",
-        default="persons from cities on the pacific coast with mountains nearby",
+        default="persons who visited cities on the pacific coast with mountains nearby",
         help=(
-            "Fuzzy query, e.g. 'persons from cities on the pacific coast "
+            "Fuzzy query, e.g. 'persons who visited cities on the pacific coast "
             "with mountains nearby'."
         ),
     )

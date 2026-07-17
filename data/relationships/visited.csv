@@ -1,0 +1,5 @@
+id,person_id,location_id,predicate
+person-1-visited-location-seattle,person-1,location-seattle,VISITED
+person-2-visited-location-seattle,person-2,location-seattle,VISITED
+person-3-visited-location-new-york,person-3,location-new-york,VISITED
+person-4-visited-location-salt-lake-city,person-4,location-salt-lake-city,VISITED

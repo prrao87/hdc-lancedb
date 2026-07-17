@@ -30,7 +30,7 @@ def query_vibe_features(query: str) -> list[str]:
     if "concrete jungle" in normalized:
         return ["dense_skyline", "concrete_jungle", "urban_energy"]
     raise ValueError(
-        "Unsupported fuzzy query. Try 'persons from cities on the pacific coast "
+        "Unsupported fuzzy query. Try 'persons who visited cities on the pacific coast "
         "with mountains nearby', 'places with mountains', 'mountain city vibes', "
         "or 'concrete jungle'."
     )
@@ -117,7 +117,7 @@ def parse_args() -> argparse.Namespace:
         "--query",
         required=True,
         help=(
-            "Fuzzy natural-language query, e.g. 'persons from cities on the "
+            "Fuzzy natural-language query, e.g. 'persons who visited cities on the "
             "pacific coast with mountains nearby'."
         ),
     )

@@ -20,7 +20,7 @@ class TorchHDEncoderTests(unittest.TestCase):
                     "key:feature",
                     "key:name",
                     "key:role",
-                    "predicate:LOCATED_IN",
+                    "predicate:VISITED",
                     "value:Seattle",
                     "value:designer",
                     "value:mountains",
@@ -64,7 +64,7 @@ class TorchHDEncoderTests(unittest.TestCase):
                 self.encoder.association_hv("feature", "pacific_coast"),
             ]
         )
-        predicate = self.encoder.predicate_hv("LOCATED_IN")
+        predicate = self.encoder.predicate_hv("VISITED")
         triple = self.encoder.encode_triple(
             subject,
             predicate,

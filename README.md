@@ -3,7 +3,7 @@
 A small, self-contained demo that combines two ways of looking at the same data: really high-dimensional vector space (10K dimensions) and property graphs. [LanceDB](https://lancedb.com) is used as the storage, providing two forms of retrieval over the data:
 
 - **Associative search** via **Hyperdimensional Computing (HDC)**: fuzzy, similarity-based
-  retrieval that answers vague, compositional questions like *"persons from cities on the
+  retrieval that answers vague, compositional questions like *"persons who visited cities on the
   pacific coast with mountains nearby."*
 - **Property-graph traversal** via **[lance-graph](https://github.com/lancedb/lance-graph)**:
   exact, schema-valid Cypher over the same tables.
@@ -52,7 +52,7 @@ traversal in the rest of this demo.
 The graph follows a compact pattern:
 
 ```cypher
-(:Person)-[:LOCATED_IN]->(:Location)
+(:Person)-[:VISITED]->(:Location)
 ```
 
 Four people across three cities: Robby Jo and Maya Chen in Seattle, Andre Brooks in New York, and
@@ -63,7 +63,7 @@ Polars:
 |------|------|
 | [data/nodes/person.csv](data/nodes/person.csv) | Person nodes |
 | [data/nodes/location.csv](data/nodes/location.csv) | Location nodes (with `timezone`, `region`, lat/lon buckets, `image_path`) |
-| [data/relationships/located_in.csv](data/relationships/located_in.csv) | `LOCATED_IN` edges |
+| [data/relationships/visited.csv](data/relationships/visited.csv) | `VISITED` edges |
 | [data/features/location_vibes.csv](data/features/location_vibes.csv) | Derived multimodal features (`mountains`, `pacific_coast`, `waterfront`, …) with VLM-style `evidence` captions |
 | [img/](img/) | Skyline images (`seattle.jpg`, `nyc.jpg`, `salt-lake-city.jpg`) |
 
@@ -76,7 +76,7 @@ Exact Cypher can't match a concept that was never a column; HDC can.
 The build runs in two stages, both writing to the same dataset:
 
 1. **`graph_ingest.py`** ingests the raw CSVs into a LanceDB dataset (`person-location/`) as three
-   tables (`Person`, `Location`, `LOCATED_IN`). The graph facts *and* the raw skyline image bytes
+   tables (`Person`, `Location`, `VISITED`). The graph facts *and* the raw skyline image bytes
    land here together.
 2. **`hdc_encode.py`** adds the 10,000-dimensional hypervector columns (`hv`, `vibe_hv`) to those
    same tables, in place.
@@ -113,15 +113,15 @@ Here is every column of every table:
 | `hv` | vector[10000] | Property-bag hypervector |
 | `vibe_hv` | vector[10000] | Bundle of fuzzy multimodal vibe features |
 
-**`LOCATED_IN`**
+**`VISITED`**
 
 | Column | Type | Holds |
 |--------|------|-------|
 | `id` | string | Stable edge id |
 | `person_id` | string | Source `Person.id` |
 | `location_id` | string | Target `Location.id` |
-| `predicate` | string | Edge type (`LOCATED_IN`) |
-| `hv` | vector[10000] | S-P-O binding `hv(person) * hv(LOCATED_IN) * hv(location)` |
+| `predicate` | string | Edge type (`VISITED`) |
+| `hv` | vector[10000] | S-P-O binding `hv(person) * hv(VISITED) * hv(location)` |
 | `vibe_hv` | vector[10000] | Multimodal path vector, searched at query time |
 
 `Location.image` holds the actual bytes of `img/seattle.jpg` and its siblings (JPEG, ~9 to 11 KB
@@ -137,7 +137,7 @@ picture never pays to read one, which is what makes storing large assets inline 
 At query time (`hdc_retrieve.py`), a natural-language query is mapped to vibe features, a query path
 vector is built, and stored `vibe_hv` columns are ranked by cosine similarity. `lance-graph`
 (`graph_retrieve.py`) then traverses from each matching location to the people connected by real
-`LOCATED_IN` edges (the validation step).
+`VISITED` edges (the validation step).
 
 ### HDC primitives (via [TorchHD](https://github.com/hyperdimensional-computing/torchhd))
 
@@ -180,7 +180,7 @@ We create multiple LanceDB tables as follows:
   `feature -> pacific_coast`, …). Keeping the integer coordinates preserves feature weights and
   supports *exact* additive insert/remove, which is why `bundle()` must **never** normalize
   internally.
-- **Relationship rows (`LOCATED_IN.hv`, `LOCATED_IN.vibe_hv`) store bipolar products.** Before a
+- **Relationship rows (`VISITED.hv`, `VISITED.vibe_hv`) store bipolar products.** Before a
   node sum enters an S-P-O binding, `normalize_for_binding()` collapses it to `{-1, +1}` so the
   multiply stays self-inverse and a known subject + predicate recover the encoded object exactly.
 - **Zero coordinates are broken deterministically.** An even-sized unnormalized sum can land on exactly `0`,
@@ -210,10 +210,10 @@ The end-to-end path builds the dataset and runs the combined fuzzy + graph query
 uv run python src/run_person_location_demo.py
 ```
 
-By default it asks *"persons from cities on the pacific coast with mountains nearby"*:
+By default it asks *"persons who visited cities on the pacific coast with mountains nearby"*:
 
 ```text
-Question: persons from cities on the pacific coast with mountains nearby
+Question: persons who visited cities on the pacific coast with mountains nearby
 
 LanceDB HDC matches, expanded through lance-graph:
   - Maya Chen -> Seattle (pacific, score=0.742, features=mountains, pacific_coast, scenic_urban)
@@ -274,7 +274,7 @@ uv run python src/graph_retrieve.py --timezone pacific
 ```
 
 ```bash
-uv run python src/graph_retrieve.py --query "MATCH (p:Person)-[:LOCATED_IN]->(l:Location) RETURN p.name AS person, l.name AS city ORDER BY city, person"
+uv run python src/graph_retrieve.py --query "MATCH (p:Person)-[:VISITED]->(l:Location) RETURN p.name AS person, l.name AS city ORDER BY city, person"
 ```
 
 ```text
@@ -287,7 +287,7 @@ uv run python src/graph_retrieve.py --query "MATCH (p:Person)-[:LOCATED_IN]->(l:
 **3. Fuzzy HDC queries.** These rank cities by cosine similarity over `vibe_hv`, then expand to people:
 
 ```bash
-uv run python src/hdc_retrieve.py --query "persons from cities on the pacific coast with mountains nearby"
+uv run python src/hdc_retrieve.py --query "persons who visited cities on the pacific coast with mountains nearby"
 ```
 
 ```text
