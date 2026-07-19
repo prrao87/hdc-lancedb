@@ -1,6 +1,6 @@
 # Multimodal Knowledge Graphs with HDC + lance-graph
 
-A small, self-contained demo that combines two ways of looking at the same data: really high-dimensional vector space (10K dimensions) and property graphs. [LanceDB](https://lancedb.com) is used as the storage, providing two forms of retrieval over the data:
+A small, self-contained demo that combines two ways of looking at the same data: hyperdimensional space (10K dimensions) and property graphs. [LanceDB](https://lancedb.com) is used as the storage, providing two forms of retrieval over the data:
 
 - **Associative search** via **Hyperdimensional Computing (HDC)**: fuzzy, similarity-based
   retrieval that answers vague, compositional questions like *"persons who visited cities on the
@@ -9,11 +9,11 @@ A small, self-contained demo that combines two ways of looking at the same data:
   exact, schema-valid Cypher over the same tables.
 
 Both views live in **one [Lance](https://lance.org)** dataset. Lance is a multimodal lakehouse format that's well suited for HDC.
-Graph facts, high-dimensional vectors (hypervectors), and native storage of multimodal assets (images, video, sensor traces, and more) are all columns of the same table, indexed and versioned together, with no need to manage multiple systems to keep them in sync. LanceDB is the data management platform and lakehouse built on top of the Lance format.
+Graph facts, hypervectors, and native storage of multimodal assets (images, video, sensor traces, and more) are all columns of the same table, indexed and versioned together, with no need to manage multiple systems to keep them in sync. LanceDB is the data management platform and lakehouse built on top of the Lance format.
 
 The core idea in this demo is this: we let HDC propose **could-be-true** candidates from fuzzy intent-style queries, and let the graph confirm **what is known to be true**, based on the facts it stores.
 
-A knowledge graph and a hyperdimensional vector space are just two
+A knowledge graph and a hyperdimensional space are just two
 representations of the same data in two different topological spaces: one discrete and exact, one
 continuous and fuzzy.
 
@@ -25,23 +25,23 @@ continuous and fuzzy.
 ## What is HDC?
 
 **Hyperdimensional Computing (HDC)** represents every concept (a person, a city, a feature like
-"mountains") as a single very high-dimensional vector (here, 10,000 numbers). The trick is that in
-such a large space, two randomly chosen vectors are almost always nearly orthogonal to one another, so each concept starts out effectively unique and unrelated to the others. You then build meaning with just
-three basic operations, the algebra of high-dimensional random vectors introduced by Pentti Kanerva
+"mountains") as a single hypervector (here, 10,000 numbers). The trick is that in
+such a large space, two randomly chosen hypervectors are almost always nearly orthogonal to one another, so each concept starts out effectively unique and unrelated to the others. You then build meaning with just
+three basic operations, the algebra of high-dimensional random hypervectors introduced by Pentti Kanerva
 ([Kanerva, 2009](https://doi.org/10.1007/s12559-009-9009-8)):
-- **Bundling** (add vectors together to form a set or "bag" of things, where the
+- **Bundling** (add hypervectors together to form a set or "bag" of things, where the
 result stays *similar* to each ingredient)
-- **Binding** (multiply vectors to tie a role to a
+- **Binding** (multiply hypervectors to tie a role to a
 value, where the result is *dissimilar* to its parts but can be cleanly undone later).
-- **Permuting** (shuffle a vector's coordinates in a fixed, reversible pattern, usually a cyclic
+- **Permuting** (shuffle a hypervector's coordinates in a fixed, reversible pattern, usually a cyclic
 shift, so the result is *dissimilar* to the original but can be undone; this is how order or position
 gets encoded, e.g. telling the first item in a sequence apart from the second)
 
 This demo uses only bundling and binding; permutation is included here for completeness, since it
 rounds out the standard HDC toolkit even though the person/location graph has no ordered sequences to encode.
 
-These three mathematical operations are enough to encode a whole record as one vector and to ask fuzzy, compositional questions of it
-by comparing vectors with a similarity score. Because the space is continuous, answers *degrade
+These three mathematical operations are enough to encode a whole record as one hypervector and to ask fuzzy, compositional questions of it
+by comparing hypervectors with a similarity score. Because the space is continuous, answers *degrade
 gracefully*: a city that matches most of a query scores high, one that matches only part of it
 scores lower, and something unrelated scores near zero: no exact keyword or column ever has to
 match. That soft, similarity-based matching is what complements the exact, schema-bound graph
@@ -122,7 +122,7 @@ Here is every column of every table:
 | `location_id` | string | Target `Location.id` |
 | `predicate` | string | Edge type (`VISITED`) |
 | `hv` | vector[10000] | S-P-O binding `hv(person) * hv(VISITED) * hv(location)` |
-| `vibe_hv` | vector[10000] | Multimodal path vector, searched at query time |
+| `vibe_hv` | vector[10000] | Multimodal path hypervector, searched at query time |
 
 `Location.image` holds the actual bytes of `img/seattle.jpg` and its siblings (JPEG, ~9 to 11 KB
 each), not a link to them. Graph facts, the image asset, and the hypervectors are columns of one
@@ -135,7 +135,7 @@ itself. The bytes are read only when something explicitly asks for them via `tak
 picture never pays to read one, which is what makes storing large assets inline practical.
 
 At query time (`hdc_retrieve.py`), a natural-language query is mapped to vibe features, a query path
-vector is built, and stored `vibe_hv` columns are ranked by cosine similarity. `lance-graph`
+hypervector is built, and stored `vibe_hv` columns are ranked by cosine similarity. `lance-graph`
 (`graph_retrieve.py`) then traverses from each matching location to the people connected by real
 `VISITED` edges (the validation step).
 
@@ -143,18 +143,18 @@ vector is built, and stored `vibe_hv` columns are ranked by cosine similarity. `
 
 Defined in [src/torchhd_encoder.py](src/torchhd_encoder.py):
 
-- **Hypervector**: a 10,000-dim bipolar (MAP) vector, one per symbolic token, from a seeded
-  deterministic random embedding. Random high-dim vectors are nearly orthogonal by default, and
+- **Hypervector**: a 10,000-dim bipolar MAP hypervector, one per symbolic token, from a seeded
+  deterministic random embedding. Random hypervectors are nearly orthogonal by default, and
   everything rests on this.
-- **Binding** (`multibind`): associates vectors; the result is *dissimilar* to its parts and is
+- **Binding** (`multibind`): associates hypervectors; the result is *dissimilar* to its parts and is
   reversible. Used to encode `subject * predicate * object`.
 - **Bundling** (`bundle` / `torchhd.multiset`): superposition; the result stays *similar* to each
   ingredient. Used to accumulate a node's property/feature bag.
 
 ## Hypervector representation lifecycle
 
-Every vector here is a **MAP** hypervector. MAP ("Multiply-Add-Permute") is the vector-symbolic
-model TorchHD uses by default (each atomic token is a 10,000-dim vector of `±1`): **bundling** is
+Every hypervector here uses **MAP**. MAP ("Multiply-Add-Permute") is the vector-symbolic
+model TorchHD uses by default (each atomic token is a 10,000-dim hypervector of `±1`): **bundling** is
 element-wise *addition*, and **binding** is element-wise *multiplication*. 
 
 Mathematically, both binding and bundling are **exactly invertible** operations, but in practice (when working with TorchHD), we have to understand when to store normalized vs. raw hypervectors so that the original hypervectors are recoverable after running numerical operations on them.
@@ -168,7 +168,7 @@ Mathematically, both binding and bundling are **exactly invertible** operations,
   a member and you land exactly on the smaller bundle. Collapse that sum back down to `±1` and the
   counts are lost for good.
 
-The un-collapsed, integer-valued vector are **unnormalized**, and the sign-only `±1` version is its
+The un-collapsed, integer-valued hypervectors are **unnormalized**, and the sign-only `±1` version is their
 **normalized (bipolar)** form. As a user working with HDC using TorchHD, all you need to know is that binding wants normalized factors; bundling wants the unnormalized counts, so the two kinds of table deliberately store different forms.
 
 ### Storage: what each LanceDB table holds
@@ -185,9 +185,9 @@ We create multiple LanceDB tables as follows:
   multiply stays self-inverse and a known subject + predicate recover the encoded object exactly.
 - **Zero coordinates are broken deterministically.** An even-sized unnormalized sum can land on exactly `0`,
   which has no sign to keep; a stable context (e.g. `Location:seattle`) seeds a random `±1` tie
-  vector, avoiding a global `0 -> -1` bias while keeping rebuilds reproducible.
+  hypervector, avoiding a global `0 -> -1` bias while keeping rebuilds reproducible.
 
-Normalize *only* at that node → binding boundary; everywhere else the unnormalized vector is the source of truth.
+Normalize *only* at that node → binding boundary; everywhere else the unnormalized hypervector is the source of truth.
 
 ## Setup
 
@@ -366,9 +366,10 @@ See [viz/README.md](viz/README.md) for the API contract.
   coordinates. One stored hypervector is 10,000 dims × 2 bytes = **20 KB**, and rows carry both
   `hv` and `vibe_hv`:
 
-  | Scale | Vectors stored | Approx. raw size (float16, pre-indexing) |
+  | Scale | Hypervectors stored | Approx. raw size (float16, pre-indexing) |
   |-------|----------------|------------------------------------------|
   | This demo | a handful | kilobytes |
-  | 1M edges × (`hv` + `vibe_hv`) | 2M vectors | ~40 GB |
+  | 1M edges × (`hv` + `vibe_hv`) | 2M hypervectors | ~40 GB |
 
 Compression / quantization (binary/bipolar packing, dimensionality choices, learned compression) and ANN indexing of the `hv` columns are real levers a production system would need, which [LanceDB](https://lancedb.com) is well-suited for.
+See [COMPRESSION_TRICKS.md](COMPRESSION_TRICKS.md) for concrete options, tradeoffs, and measured binary-HDC results from this demo.
