@@ -361,12 +361,14 @@ See [viz/README.md](viz/README.md) for the API contract.
 - **Compute**: base token hypervectors are a one-time seeded random embedding (cheap,
   deterministic), but *every* entity and path encode is a stack of binds/bundles over 10,000-dim
   tensors. At graph scale that's real per-row tensor work (batchable and can be parallelized, but it's a non-trivial compute cost).
-- **Storage**: one float32 hypervector is 10,000 dims × 4 bytes = **40 KB**, and rows carry both
+- **Storage**: encoded hypervectors are computed in float32, then stored in Lance as float16—a
+  deliberate storage/precision tradeoff that is lossless for this demo's small integer-valued MAP
+  coordinates. One stored hypervector is 10,000 dims × 2 bytes = **20 KB**, and rows carry both
   `hv` and `vibe_hv`:
 
-  | Scale | Vectors stored | Approx. raw size (float32, pre-indexing) |
+  | Scale | Vectors stored | Approx. raw size (float16, pre-indexing) |
   |-------|----------------|------------------------------------------|
   | This demo | a handful | kilobytes |
-  | 1M edges × (`hv` + `vibe_hv`) | 2M vectors | ~80 GB |
+  | 1M edges × (`hv` + `vibe_hv`) | 2M vectors | ~40 GB |
 
 Compression / quantization (binary/bipolar packing, dimensionality choices, learned compression) and ANN indexing of the `hv` columns are real levers a production system would need, which [LanceDB](https://lancedb.com) is well-suited for.

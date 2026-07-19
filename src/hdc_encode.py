@@ -16,8 +16,8 @@ from person_location_data import (
 )
 from storage_paths import DEFAULT_DB_URI, DEFAULT_VOCAB_PATH, RAW_DATA_DIR
 from torchhd_encoder import (
-    BLOB_COLUMNS,
     DIMENSIONS,
+    NON_SYMBOLIC_COLUMNS,
     TorchHDEncoder,
     build_vocabulary,
     hv_to_list,
@@ -72,13 +72,16 @@ def dataset_path(db_uri: Path, table_name: str) -> str:
 
 
 def read_table(db_uri: Path, table_name: str) -> pl.DataFrame:
-    """Read one graph table into Polars, skipping lazy blob asset columns.
+    """Read symbolic graph columns, skipping blobs and prior HDC vectors.
 
-    Image bytes are never needed to encode hypervectors, and projecting them
-    out means the encode step never materializes a blob.
+    Neither image bytes nor already-encoded vectors are inputs to a fresh HDC
+    encoding pass. Projecting both out avoids materializing large columns and
+    keeps repeat encoding proportional to the source graph properties.
     """
     ds = lance.dataset(dataset_path(db_uri, table_name))
-    columns = [name for name in ds.schema.names if name not in BLOB_COLUMNS]
+    columns = [
+        name for name in ds.schema.names if name not in NON_SYMBOLIC_COLUMNS
+    ]
     return pl.from_arrow(ds.to_table(columns=columns))
 
 
@@ -190,12 +193,16 @@ def hv_merge_table(rows: pl.DataFrame, hv_columns: list[str]) -> pa.Table:
     """Build the `id` + hypervector Arrow table Lance grafts onto a graph table.
 
     Polars would hand Lance `large_list<double>` columns, but LanceDB vector
-    search needs fixed-size `float32` lists, so the vector columns are cast to
-    `list_(float32, DIMENSIONS)` before the merge.
+    search needs fixed-size floating-point lists. TorchHD still performs its
+    encoding algebra in float32, while Lance stores the finished vectors as
+    float16 to halve their raw storage cost. That is a deliberate storage vs.
+    precision tradeoff: it is lossless for this demo's small integer-valued MAP
+    coordinates, but production workloads should validate search recall before
+    adopting it for vectors with a wider numeric range.
     """
     merge_columns = rows.select(["id", *hv_columns]).to_arrow()
     fields = [
-        pa.field(field.name, pa.list_(pa.float32(), DIMENSIONS))
+        pa.field(field.name, pa.list_(pa.float16(), DIMENSIONS))
         if field.name in hv_columns
         else field
         for field in merge_columns.schema
