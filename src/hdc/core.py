@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Sequence
+from typing import Mapping, Sequence
 
 import torch
 import torchhd
@@ -10,16 +10,17 @@ import torchhd
 
 DIMENSIONS = 10_000
 SEED = 13
-VECTOR_COLUMNS = {"hv", "vibe_hv"}
-# Raw multimodal assets (image bytes, …) live in the table but are not symbolic
-# tokens, so they are skipped when building property bags and the vocabulary.
-BLOB_COLUMNS = {"image"}
-NON_SYMBOLIC_COLUMNS = VECTOR_COLUMNS | BLOB_COLUMNS
+# Stored vectors and lazy image bytes are not structural graph properties.
+NON_SYMBOLIC_COLUMNS = {"hv", "image"}
 
 
 @dataclass(frozen=True)
 class TorchHDEncoder:
-    """Thin wrapper around TorchHD primitives for symbolic graph records.
+    """Vocabulary-free wrapper around TorchHD primitives for graph records.
+
+    Atomic structural symbols are generated independently from stable hashes,
+    so adding a previously unseen token never requires rebuilding a vocabulary
+    or changes any existing token's hypervector.
 
     Atomic MAP hypervectors and bound role/value associations are bipolar.
     Bundling retains the full-precision additive sum so associations can be
@@ -27,28 +28,33 @@ class TorchHDEncoder:
     MAP space only when they become factors in a larger binding operation.
     """
 
-    tokens: Sequence[str]
     dimensions: int = DIMENSIONS
     seed: int = SEED
 
     def __post_init__(self) -> None:
-        token_to_index = {token: index for index, token in enumerate(self.tokens)}
-        if len(token_to_index) != len(self.tokens):
-            raise ValueError("TorchHDEncoder tokens must be unique")
-
-        torch.manual_seed(self.seed)
-        embedding = torchhd.embeddings.Random(
-            len(self.tokens),
-            self.dimensions,
-            vsa="MAP",
-        )
-
-        object.__setattr__(self, "token_to_index", token_to_index)
-        object.__setattr__(self, "embedding", embedding)
+        if self.dimensions <= 0:
+            raise ValueError("TorchHD dimensions must be positive")
+        object.__setattr__(self, "_token_cache", {})
 
     def token_hv(self, token: str) -> torchhd.MAPTensor:
-        """Return the deterministic random hypervector for one symbolic token."""
-        return self.embedding.weight[self.token_to_index[token]]
+        """Return a hash-derived bipolar hypervector for any symbolic token."""
+        if not token:
+            raise ValueError("Symbolic tokens must be non-empty")
+        cached = self._token_cache.get(token)
+        if cached is not None:
+            return cached
+
+        generator = torch.Generator(device="cpu")
+        generator.manual_seed(self._context_seed(f"token:{token}"))
+        hypervector = torchhd.random(
+            1,
+            self.dimensions,
+            "MAP",
+            generator=generator,
+            dtype=torch.float32,
+        )[0]
+        self._token_cache[token] = hypervector
+        return hypervector
 
     def association_hv(self, role: str, value: str) -> torchhd.MAPTensor:
         """Bind a reusable role to one value, e.g. feature -> mountains."""
@@ -68,19 +74,6 @@ class TorchHDEncoder:
             [self.association_hv(key, value) for key, value in sorted_items]
         )
 
-    def encode_vibe_terms(self, terms: Mapping[str, str]) -> torchhd.MAPTensor:
-        """Encode one evidence row as bound role/value associations.
-
-        The feature association is repeated to preserve the demo's deliberate
-        weighting of semantic content over provenance and strength metadata.
-        """
-        associations = []
-        for role, value in sorted(terms.items()):
-            association = self.association_hv(role, value)
-            repetitions = 4 if role == "feature" else 1
-            associations.extend([association] * repetitions)
-        return self.bundle(associations)
-
     def bundle(self, hypervectors: Sequence[torchhd.MAPTensor]) -> torchhd.MAPTensor:
         """Bundle hypervectors as a full-precision, exactly updateable sum."""
         if not hypervectors:
@@ -97,18 +90,19 @@ class TorchHDEncoder:
         """Return a deterministic random bipolar vector for zero-coordinate ties."""
         if not context:
             raise ValueError("Tie-breaking context must be non-empty")
-        digest = hashlib.sha256(f"{self.seed}:{context}".encode()).digest()
-        context_seed = int.from_bytes(digest[:8], "big") % (2**63 - 1)
-        generator = torch.Generator(device=self.embedding.weight.device)
-        generator.manual_seed(context_seed)
+        generator = torch.Generator(device="cpu")
+        generator.manual_seed(self._context_seed(f"tie:{context}"))
         return torchhd.random(
             1,
             self.dimensions,
             "MAP",
             generator=generator,
-            dtype=self.embedding.weight.dtype,
-            device=self.embedding.weight.device,
+            dtype=torch.float32,
         )[0]
+
+    def _context_seed(self, context: str) -> int:
+        digest = hashlib.sha256(f"{self.seed}:{context}".encode()).digest()
+        return int.from_bytes(digest[:8], "big") % (2**63 - 1)
 
     def normalize_for_binding(
         self,
@@ -157,35 +151,3 @@ class TorchHDEncoder:
         return torchhd.multibind(
             torch.stack([subject_factor, predicate_hv, object_factor])
         )
-
-
-def build_vocabulary(
-    persons: Iterable[Mapping[str, str]],
-    locations: Iterable[Mapping[str, str]],
-    relationships: Iterable[Mapping[str, str]],
-    predicate: str,
-    location_vibes: Iterable[Mapping[str, str]] = (),
-) -> list[str]:
-    """Create the full symbolic vocabulary before random HVs are initialized."""
-    tokens = {f"predicate:{predicate}"}
-    for row in [*persons, *locations, *relationships]:
-        for key, value in row.items():
-            if key in NON_SYMBOLIC_COLUMNS:
-                continue
-            tokens.add(f"key:{key}")
-            tokens.add(f"value:{value}")
-    for vibe in location_vibes:
-        for role in ("source", "feature", "strength"):
-            tokens.add(f"key:{role}")
-            tokens.add(f"value:{vibe[role]}")
-    return sorted(tokens)
-
-
-def hv_to_list(hv: torchhd.MAPTensor) -> list[float]:
-    """Convert a TorchHD hypervector to a LanceDB-friendly float32 list."""
-    return hv.detach().to(dtype=torch.float32).cpu().tolist()
-
-
-def list_to_hv(values: list[float]) -> torchhd.MAPTensor:
-    """Convert a stored LanceDB vector back into a TorchHD MAP tensor."""
-    return torchhd.ensure_vsa_tensor(values, vsa="MAP", dtype=torch.float32)

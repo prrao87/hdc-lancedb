@@ -23,17 +23,18 @@ structures, and retained dataset versions.
 
 The best compression is not materializing a hypervector that no query uses.
 
-The current demo stores `Person.hv`, `Location.hv`, `Location.vibe_hv`,
-`VISITED.hv`, and `VISITED.vibe_hv`, but its online retrieval path searches only
-`Location.vibe_hv`. The other hypervectors illustrate HDC composition and
-reversible relationships; a production system should decide which of them
-deserve online materialization.
+The current demo already stores exactly one hypervector per row:
+`Person.hv`, `Location.hv`, and `VISITED.hv`. Its online retrieval path searches
+the weighted full-node `Location.hv`, then follows exact graph edges. The Person
+and relationship hypervectors illustrate HDC composition and reversible paths;
+a production system should still decide which row types deserve online
+materialization.
 
 Useful patterns include:
 
 - Store only hypervectors used by an online query or index.
-- Regenerate deterministic atomic hypervectors from the vocabulary, seed,
-  dimensions, and model instead of persisting the atomic embedding matrix.
+- Regenerate deterministic structural hypervectors from their stable hashes,
+  seed, and dimensions instead of persisting an atomic embedding matrix.
 - Recompute cheap derived hypervectors from source facts when they are rarely read.
 - Avoid copying a location hypervector onto every incident edge. Retrieve locations
   first, then traverse graph edges by ID, as this demo does.
@@ -71,8 +72,9 @@ counts grow beyond the exact-integer range of half precision.
 
 ## Binary HDC and Hamming search
 
-A binary-first design is practical for this workload and offers the largest
-simple reduction in raw hypervector storage.
+A packed-binary variant offers the largest simple reduction in raw hypervector
+storage, but it is not a lossless substitute for the weighted full-node sums
+used by the current retrieval path.
 
 ### Representation
 
@@ -109,7 +111,7 @@ is divisible by eight. Binary indexing uses Hamming distance with `IVF_FLAT`:
 from lancedb.index import IvfFlat
 
 table.create_index(
-    "vibe_hv_binary",
+    "hv_binary",
     config=IvfFlat(distance_type="hamming"),
 )
 ```
@@ -177,8 +179,8 @@ cold storage while serving packed bits online.
 
 ### Zero coordinates need a policy
 
-Even-sized bundles contain ties. The current four-feature query has 3,753 zero
-coordinates out of 10,000. A binary hypervector has no zero state.
+Even-sized bundles can contain ties, while a binary hypervector has no zero
+state.
 
 Mapping every zero to the same bit creates artificial agreement. Prefer a
 deterministic pseudo-random tie-breaker derived from stable context:
@@ -190,22 +192,14 @@ The existing `normalize_for_binding()` implementation demonstrates this
 strategy. A ternary representation could retain zero explicitly, but it would
 not use LanceDB's packed-binary Hamming path directly.
 
-### Results on this demo
+### Evaluate binary search as a separate representation
 
-The current bundles were majority-normalized with context-specific deterministic
-zero ties, packed into 1,250 bytes, and searched through LanceDB with Hamming
-distance. A binary `IVF_FLAT` index was also created successfully.
-
-| Location | Raw-bundle cosine | Hamming distance | Binary score \(1-2H/D\) |
-|---|---:|---:|---:|
-| Seattle | 0.741850 | 2,603 | 0.479400 |
-| Salt Lake City | 0.443816 | 3,664 | 0.267200 |
-| New York | -0.012302 | 5,009 | -0.001800 |
-
-The absolute scores changed, but the ranking and the candidates above the
-demo's `0.20` threshold remained the same. Three locations are not enough to
-establish production recall, but the result makes binary HDC a credible next
-experiment.
+The current `Location.hv` preserves structural counts and an 8× semantic
+weight. Majority-normalizing it for Hamming search discards those magnitudes, so
+old cosine scores and thresholds cannot be reused. A binary experiment should
+write a parallel `hv_binary` column and rerun the current semantic and
+`VISITED` regression sets, measuring ranking changes before replacing the
+float16 column.
 
 ## Integer bundle storage
 
@@ -334,10 +328,9 @@ Search terms: **Lance compact files**, **Lance cleanup old versions**, and
 This primarily reduces ingestion time and peak memory rather than final disk
 size, but it matters at the same scales where storage becomes expensive.
 
-The demo currently converts each tensor through `.tolist()`, creating 10,000
-boxed Python floats per hypervector before Arrow casts the column to `float16`.
-A production encoder should batch hypervectors and pass contiguous tensor,
-NumPy, or Arrow buffers directly:
+The current encoder already batches hypervectors and passes contiguous
+tensor/NumPy/Arrow buffers to the float16 storage boundary. Preserve that path
+at production scale:
 
 ```text
 batched Torch tensor

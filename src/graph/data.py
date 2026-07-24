@@ -4,9 +4,10 @@ from pathlib import Path
 
 import polars as pl
 
-from storage_paths import PROJECT_ROOT, RAW_DATA_DIR
+from graph.paths import PROJECT_ROOT, RAW_DATA_DIR
 
 PREDICATE = "VISITED"
+BLOB_COLUMNS = {"image"}
 
 
 def read_csv(path: Path) -> pl.DataFrame:
@@ -44,8 +45,8 @@ def relationship_records(raw_data_dir: Path = RAW_DATA_DIR) -> pl.DataFrame:
     return read_csv(raw_data_dir / "relationships" / "visited.csv")
 
 
-def location_vibe_records(raw_data_dir: Path = RAW_DATA_DIR) -> pl.DataFrame:
-    """Load raw multimodal vibe evidence rows for Location nodes."""
+def location_evidence_records(raw_data_dir: Path = RAW_DATA_DIR) -> pl.DataFrame:
+    """Load multimodal semantic evidence rows for Location nodes."""
     return read_csv(raw_data_dir / "features" / "location_vibes.csv")
 
 
@@ -82,10 +83,13 @@ def validate_relationships(
         )
 
 
-def validate_location_vibes(locations: pl.DataFrame, vibes: pl.DataFrame) -> None:
-    """Fail early when vibe evidence references missing locations or bad weights."""
+def validate_location_evidence(
+    locations: pl.DataFrame,
+    evidence: pl.DataFrame,
+) -> None:
+    """Fail early when semantic evidence has invalid locations or weights."""
     missing_locations = (
-        vibes.select("location_id")
+        evidence.select("location_id")
         .join(
             locations.select(pl.col("id").alias("location_id")),
             on="location_id",
@@ -97,13 +101,15 @@ def validate_location_vibes(locations: pl.DataFrame, vibes: pl.DataFrame) -> Non
         .to_list()
     )
     bad_weights = (
-        vibes.with_columns(pl.col("weight").cast(pl.Float64, strict=False).alias("_weight"))
+        evidence.with_columns(
+            pl.col("weight").cast(pl.Float64, strict=False).alias("_weight")
+        )
         .filter(pl.col("_weight").is_null() | (pl.col("_weight") < 0) | (pl.col("_weight") > 1))
         .select("location_id", "feature", "weight")
         .to_dicts()
     )
     if missing_locations or bad_weights:
         raise ValueError(
-            "Location vibe CSV contains invalid rows: "
+            "Location evidence CSV contains invalid rows: "
             f"locations={missing_locations}, weights={bad_weights}"
         )
