@@ -1,1 +1,1 @@
-"""Hyperdimensional encoding, semantic projection, and retrieval."""
+"""Semantic and structural hyperdimensional encoding for the graph demo."""

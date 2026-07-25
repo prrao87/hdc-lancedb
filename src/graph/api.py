@@ -1,3 +1,5 @@
+"""Serve the persisted person-location graph and its images through FastAPI."""
+
 from __future__ import annotations
 
 import mimetypes

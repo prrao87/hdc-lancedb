@@ -1,3 +1,5 @@
+"""Combine structural properties and semantic evidence into one Location vector."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

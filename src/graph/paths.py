@@ -1,3 +1,5 @@
+"""Define shared filesystem paths and runtime defaults for the graph demo."""
+
 from __future__ import annotations
 
 from pathlib import Path

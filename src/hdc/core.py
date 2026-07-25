@@ -1,3 +1,5 @@
+"""Provide vocabulary-free MAP primitives for graph nodes and relationships."""
+
 from __future__ import annotations
 
 import hashlib

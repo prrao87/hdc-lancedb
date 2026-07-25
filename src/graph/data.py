@@ -1,3 +1,5 @@
+"""Load and validate the source records used by the person-location graph."""
+
 from __future__ import annotations
 
 from pathlib import Path

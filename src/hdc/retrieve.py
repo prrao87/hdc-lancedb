@@ -1,3 +1,5 @@
+"""Rank stored Location vectors for free-text queries and expand graph paths."""
+
 from __future__ import annotations
 
 from pathlib import Path

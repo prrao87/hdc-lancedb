@@ -1,1 +1,1 @@
-"""Graph data, storage, traversal, and API support."""
+"""Graph data loading, Lance persistence, Cypher traversal, and API helpers."""

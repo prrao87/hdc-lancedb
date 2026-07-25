@@ -1,3 +1,5 @@
+"""Embed text with Ollama and project it deterministically into MAP space."""
+
 from __future__ import annotations
 
 import hashlib

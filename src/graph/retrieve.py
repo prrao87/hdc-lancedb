@@ -1,3 +1,5 @@
+"""Configure lance-graph and execute exact Cypher traversals over stored tables."""
+
 from __future__ import annotations
 
 from pathlib import Path

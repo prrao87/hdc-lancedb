@@ -1,3 +1,5 @@
+"""Create the Lance graph tables from the raw person-location records."""
+
 from __future__ import annotations
 
 import shutil

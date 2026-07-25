@@ -1,3 +1,5 @@
+"""Encode graph rows into full HDC vectors and persist them in Lance."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
