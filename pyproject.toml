@@ -1,13 +1,15 @@
 [project]
 name = "hdc-research"
 version = "0.1.0"
-description = "Add your description here"
+description = "Semantic hyperdimensional retrieval over a LanceDB property graph"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.136.3",
     "lance-graph>=0.5.4",
     "lancedb>=0.34.0",
+    "numpy>=2.3.0",
+    "ollama>=0.6.2",
     "polars>=1.41.2",
     "pyarrow>=24.0.0",
     "pylance>=8.0.0",
@@ -15,3 +17,12 @@ dependencies = [
     "torch-hd>=5.8.3",
     "uvicorn[standard]>=0.49.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
