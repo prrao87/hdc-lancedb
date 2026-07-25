@@ -166,10 +166,12 @@ each candidate location to the people connected by real `VISITED` edges (the val
 
 ### From a text embedding to HDC space
 
-The embedding model returns one dense vector per piece of text. The locally tested
-`nomic-embed-text:latest` build returns 768 numbers. Those 768 values already contain the semantic
-information: phrases such as "mountainous" and "mountains," or "Pacific Ocean" and "pacific
-coast," land near one another even though their words are not identical.
+The embedding model returns one dense vector per piece of text. The model used was
+`nomic-embed-text`, which returns embeddings with 768 dimensions. This stores the rich semantic
+information in the text: phrases such as "mountainous" and "mountains," or "Pacific Ocean" and "pacific
+coast," land near one another even though the query may not name them exactly.
+
+**We project up this traditional text embedding into hypervector space**.
 
 The up-projection does **not** invent more semantic information. It spreads the existing geometry
 across many HDC coordinates:
